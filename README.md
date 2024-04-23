@@ -1,7 +1,8 @@
 ## Times
 
-| Name             | Time   |
-| ---------------- | ------ |
-| Java Baseline    | 3m 20s |
-| Rust unoptimized | 1m 35s |
-| Rust multicore   | 34s    |
+| Name                          | Time   |
+| ----------------------------- | ------ |
+| Java Baseline                 | 3m 20s |
+| Rust unoptimized              | 1m 35s |
+| Rust multicore                | 34s    |
+| Rust improve read allocations | 24s    |

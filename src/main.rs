@@ -23,13 +23,11 @@ impl Stat {
         }
     }
 
-    fn update(&self, temp: f32) -> Self {
-        Stat {
-            min: self.min.min(temp),
-            max: self.max.max(temp),
-            sum: self.sum + temp,
-            count: self.count + 1,
-        }
+    fn update(&mut self, temp: f32) {
+        self.min = self.min.min(temp);
+        self.max = self.max.max(temp);
+        self.sum += temp;
+        self.count += 1;
     }
 
     fn join(&mut self, other: &Self) {
@@ -101,24 +99,30 @@ fn read_part(start: u64, len: usize) -> HashMap<String, Stat> {
         read += (add + 1) as usize;
     }
 
-    let lines = io::BufReader::new(&file).lines().flatten();
-
     let mut stats: HashMap<String, Stat> = HashMap::new();
 
-    for line in lines {
+    let mut reader = io::BufReader::new(&file);
+    let mut line = String::new();
+
+    loop {
         if read > len {
             break;
         }
 
-        read += line.len();
+        line.clear();
+        let cur_read = reader.read_line(&mut line).unwrap();
+        if cur_read == 0 {
+            break;
+        }
+        read += cur_read;
 
-        let (name, temp) = parse_line(line);
-        match stats.get(&name) {
+        let (name, temp) = parse_line(&line);
+        match stats.get_mut(name) {
             None => {
-                stats.insert(name, Stat::new(temp));
+                stats.insert(name.to_string(), Stat::new(temp));
             }
             Some(stat) => {
-                stats.insert(name, stat.update(temp));
+                stat.update(temp);
             }
         }
     }
@@ -126,12 +130,11 @@ fn read_part(start: u64, len: usize) -> HashMap<String, Stat> {
     stats
 }
 
-fn parse_line(mut line: String) -> (String, f32) {
-    let idx = line.find(';').unwrap_or_else(|| panic!("{}", line));
-    let temp_str = &line[(idx + 1)..];
+fn parse_line(line: &str) -> (&str, f32) {
+    let mut parts = line[..line.len() - 1].split(';');
+    let name = parts.next().unwrap();
+    let temp_str = parts.next().unwrap();
     let temp: f32 = temp_str.parse().unwrap();
 
-    line.truncate(idx);
-
-    (line, temp)
+    (name, temp)
 }
