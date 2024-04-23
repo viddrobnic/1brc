@@ -1,20 +1,20 @@
 use std::{
     collections::HashMap,
     fs::File,
-    io::{self, BufRead, Read, Seek, SeekFrom},
+    io::{Read, Seek, SeekFrom},
 };
 
 const PATH: &str = "/Users/vidd/Desktop/1brc/measurements.txt";
 
 struct Stat {
-    min: f32,
-    max: f32,
-    sum: f32,
+    min: i64,
+    max: i64,
+    sum: i64,
     count: u32,
 }
 
 impl Stat {
-    fn new(temp: f32) -> Self {
+    fn new(temp: i64) -> Self {
         Self {
             min: temp,
             max: temp,
@@ -23,7 +23,7 @@ impl Stat {
         }
     }
 
-    fn update(&mut self, temp: f32) {
+    fn update(&mut self, temp: i64) {
         self.min = self.min.min(temp);
         self.max = self.max.max(temp);
         self.sum += temp;
@@ -36,6 +36,12 @@ impl Stat {
         self.sum += other.sum;
         self.count += other.count;
     }
+}
+
+struct ParsedLine<'a> {
+    data_read: usize,
+    name: &'a [u8],
+    temp: i64,
 }
 
 fn main() {
@@ -54,7 +60,7 @@ fn main() {
         })
         .collect();
 
-    let stats: HashMap<String, Stat> =
+    let stats: HashMap<Vec<u8>, Stat> =
         threads.into_iter().fold(HashMap::new(), |mut acc, handle| {
             let res = handle.join().unwrap();
             for (key, stat) in res.into_iter() {
@@ -79,13 +85,19 @@ fn main() {
         }
 
         let stat = stats.get(key).unwrap();
-        let mean = stat.sum / stat.count as f32;
-        print!("{}={:.1}/{:.1}/{:.1}", key, stat.min, mean, stat.max);
+        let mean = stat.sum as f32 / stat.count as f32;
+        print!(
+            "{}={:.1}/{:.1}/{:.1}",
+            std::str::from_utf8(&key).unwrap(),
+            stat.min as f32 / 10.0,
+            mean / 10.0,
+            stat.max as f32 / 10.0
+        );
     }
     println!("}}");
 }
 
-fn read_part(start: u64, len: usize) -> HashMap<String, Stat> {
+fn read_part(start: u64, len: usize) -> HashMap<Vec<u8>, Stat> {
     let mut file = File::open(PATH).unwrap();
     file.seek(SeekFrom::Start(start)).unwrap();
 
@@ -99,42 +111,74 @@ fn read_part(start: u64, len: usize) -> HashMap<String, Stat> {
         read += (add + 1) as usize;
     }
 
-    let mut stats: HashMap<String, Stat> = HashMap::new();
+    let mut stats: HashMap<Vec<u8>, Stat> = HashMap::new();
 
-    let mut reader = io::BufReader::new(&file);
-    let mut line = String::new();
+    let mut buf = [0 as u8; 1024 * 1024]; // 100 MB
+    let mut start = 0;
+    let mut end = 0;
 
     loop {
-        if read > len {
-            break;
-        }
-
-        line.clear();
-        let cur_read = reader.read_line(&mut line).unwrap();
+        let cur_read = file.read(&mut buf[end..]).unwrap();
         if cur_read == 0 {
-            break;
+            return stats;
         }
-        read += cur_read;
+        end += cur_read;
 
-        let (name, temp) = parse_line(&line);
-        match stats.get_mut(name) {
-            None => {
-                stats.insert(name.to_string(), Stat::new(temp));
+        while let Some(line) = parse_line(&buf[start..end]) {
+            if read > len {
+                return stats;
             }
-            Some(stat) => {
-                stat.update(temp);
+            read += line.data_read;
+            start += line.data_read;
+
+            match stats.get_mut(line.name) {
+                None => {
+                    stats.insert(line.name.to_owned(), Stat::new(line.temp));
+                }
+                Some(stat) => {
+                    stat.update(line.temp);
+                }
             }
+        }
+
+        buf.rotate_left(start);
+        end -= start;
+        start = 0;
+    }
+}
+
+fn parse_line<'a>(data: &'a [u8]) -> Option<ParsedLine<'a>> {
+    let idx = data.iter().position(|c| *c == b';');
+    let Some(name_end) = idx else {
+        return None;
+    };
+
+    let idx = (data[name_end..]).iter().position(|c| *c == b'\n');
+    let Some(line_end) = idx else {
+        return None;
+    };
+    let line_end = name_end + line_end;
+
+    let res = ParsedLine {
+        data_read: line_end + 1,
+        name: &data[..name_end],
+        temp: parse_temp(&data[(name_end + 1)..line_end]),
+    };
+    Some(res)
+}
+
+fn parse_temp(temp: &[u8]) -> i64 {
+    let mut mult = 1;
+    let mut n = 0;
+
+    for ch in temp.iter() {
+        match ch {
+            b'-' => mult = -1,
+            b'.' => (),
+            b'0'..=b'9' => n = n * 10 + (ch - b'0') as i64,
+            _ => panic!("invalid char: {}", ch),
         }
     }
 
-    stats
-}
-
-fn parse_line(line: &str) -> (&str, f32) {
-    let mut parts = line[..line.len() - 1].split(';');
-    let name = parts.next().unwrap();
-    let temp_str = parts.next().unwrap();
-    let temp: f32 = temp_str.parse().unwrap();
-
-    (name, temp)
+    n * mult
 }
