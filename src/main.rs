@@ -88,7 +88,7 @@ fn main() {
         let mean = stat.sum as f32 / stat.count as f32;
         print!(
             "{}={:.1}/{:.1}/{:.1}",
-            std::str::from_utf8(&key).unwrap(),
+            std::str::from_utf8(key).unwrap(),
             stat.min as f32 / 10.0,
             mean / 10.0,
             stat.max as f32 / 10.0
@@ -104,7 +104,7 @@ fn read_part(start: u64, len: usize) -> HashMap<Vec<u8>, Stat> {
     let mut read: usize = 0;
     if start != 0 {
         let mut buf: [u8; 256] = [0; 256];
-        file.read(&mut buf).unwrap();
+        _ = file.read(&mut buf).unwrap();
         let add = buf.iter().position(|c| *c == b'\n').unwrap() as u64;
         file.seek(SeekFrom::Start(start + add + 1)).unwrap();
 
@@ -113,7 +113,7 @@ fn read_part(start: u64, len: usize) -> HashMap<Vec<u8>, Stat> {
 
     let mut stats: HashMap<Vec<u8>, Stat> = HashMap::new();
 
-    let mut buf = [0 as u8; 1024 * 1024]; // 100 MB
+    let mut buf = [0_u8; 1024 * 1024]; // 1 MB
     let mut start = 0;
     let mut end = 0;
 
@@ -147,17 +147,11 @@ fn read_part(start: u64, len: usize) -> HashMap<Vec<u8>, Stat> {
     }
 }
 
-fn parse_line<'a>(data: &'a [u8]) -> Option<ParsedLine<'a>> {
-    let idx = data.iter().position(|c| *c == b';');
-    let Some(name_end) = idx else {
-        return None;
-    };
+fn parse_line(data: &[u8]) -> Option<ParsedLine<'_>> {
+    let name_end = data.iter().position(|c| *c == b';')?;
 
     let idx = (data[name_end..]).iter().position(|c| *c == b'\n');
-    let Some(line_end) = idx else {
-        return None;
-    };
-    let line_end = name_end + line_end;
+    let line_end = name_end + idx?;
 
     let res = ParsedLine {
         data_read: line_end + 1,
